@@ -1,0 +1,362 @@
+//global var
+real initX;
+real initY;
+real CG_Dis = 20;  //mil  , closer distance
+real CG_Interval = 40;   //mil , via distance
+real drillSize = 13;  //mil
+int lineWidth;
+string cmd= "grid mil;";
+string VIASignalName = "TEST";
+string signalLine = "AB";
+string commonString;
+string viacmdTop,viacmdBotton = "";
+real topRestLength = 0;
+real btmRestLength = 0;
+real currentAngle = 0;
+real currentDirection = 0;
+
+	
+//*****String Compare : 0 is equal
+int strCompare(string a, string b) {
+	
+	if(strlen(a)!=strlen(b))   //check size should equal
+		return 1;
+	
+	int headSearch = strstr(a,b);   //check word similar
+	if(headSearch!=0)
+		return 1;
+	int tailSearch = strrstr(a,b);
+	if(tailSearch!=0)
+		return 1;
+	return 0;
+}
+
+
+//****Print text
+void print(string text) {
+	dlgDialog("Print") {
+	dlgLabel(text);
+	dlgPushButton("+OK") dlgAccept();
+	};
+	//dlgMessageBox("Hi","&YES","&NO");
+}
+
+//****Print Int
+void printNum(real text) {
+	string result;
+	sprintf(result,"%f",text);
+	dlgDialog("Print") {
+	dlgLabel(result);
+	dlgPushButton("+OK") dlgAccept();
+	};
+}
+
+//***** calculate next position of via
+real nextXPos(real x) {
+	return 0;
+}
+
+real nextYPos(real y) {
+	return 0;
+}
+
+real nextLineXPos(real x) {
+	initX = x;
+	return 0;
+}
+
+real nextLineYPos(real Y) {
+	return 0;
+}
+
+void makeCopGuardStraightLine(real x1, real x2, real y1, real y2) {
+
+	real topViaNum;
+	real btmViaNum;
+	
+//	if( ((x1=x2) && currentAngle > 270) || ((x1=x2) && currentAngle > 180 && currentAngle <270)) {
+//		real temp = topRestLength;
+//		topRestLength = btmRestLength;
+//		btmRestLength = temp;
+//	}
+	
+	
+	real topFirstSegement = CG_Interval - topRestLength;
+	real btmFirstSegement = CG_Interval - btmRestLength;
+	
+	if(x1==x2) {  //row
+		topViaNum = (abs(y1-y2) - topFirstSegement)/CG_Interval;
+		btmViaNum = (abs(y1-y2) - btmFirstSegement)/CG_Interval;
+	}
+	else {   //column
+		topViaNum = (abs(x1-x2) - topFirstSegement)/CG_Interval;
+		btmViaNum = (abs(x1-x2) - btmFirstSegement)/CG_Interval;
+	}
+	
+	real shitValue = lineWidth/2 + CG_Dis +16; //16 is the minimum outer layer size
+
+	topRestLength = frac(topViaNum)*CG_Interval;
+	btmRestLength = frac(btmViaNum)*CG_Interval;	
+	
+	//change drill size 
+	string drillSizeCMD;
+	sprintf(drillSizeCMD, "change drill %f;",drillSize);
+	cmd += drillSizeCMD;
+	
+	
+	if((x1==x2) && (currentAngle > 270 || currentAngle < 90))  // determine top and btm radius in vertical line
+		shitValue = 0-shitValue;
+		
+	//if((y1==y2) && (currentAngle > 180))  // determine top and btm radius in vertical line
+		//shitValue = 0-shitValue;
+	
+	for(int i=0;i<topViaNum;i++) {
+		real topMoveDist = i*CG_Interval + topFirstSegement;
+		//vertical line
+		if(x1==x2) {
+			if(y2>y1) 
+				sprintf(viacmdTop,commonString + " 13 round 1-16 (%f %f);", x1 - shitValue , y1 + topMoveDist);
+			else 
+				sprintf(viacmdTop, commonString + " 13 round 1-16 (%f %f);", x1 - shitValue, y1 - topMoveDist);
+		}
+		//horizontal line
+		else {
+			if(x1>x2)
+				sprintf(viacmdTop, commonString + " 13 round 1-16 (%f %f);", x1 -topMoveDist ,y1 + shitValue);
+			else 
+				sprintf(viacmdTop, commonString + " 13 round 1-16 (%f %f);", x1 + topMoveDist ,y1 + shitValue);
+		}
+		cmd += viacmdTop;
+	}
+
+	for(i=0;i<btmViaNum;i++) {
+		real btmMoveDist = i*CG_Interval + btmFirstSegement;
+		//vertical line
+		if(x1==x2) {
+			if(y2>y1)
+				sprintf(viacmdBotton, commonString + " 13 round 1-16 (%f %f);", x1 + shitValue, y1 + btmMoveDist);
+			else
+				sprintf(viacmdBotton, commonString + " 13 round 1-16 (%f %f);", x1 + shitValue, y1 - btmMoveDist);
+		}
+		//horizontal line
+		else {
+			if(x1>x2) 
+				sprintf(viacmdBotton, commonString + " 13 round 1-16 (%f %f);", x1 -btmMoveDist ,y1 - shitValue);
+			else
+				sprintf(viacmdBotton, commonString + " 13 round 1-16 (%f %f);", x1 + btmMoveDist ,y1 - shitValue);
+		}
+		cmd += viacmdBotton;
+	}
+}
+
+
+void makeCopGuardArcLine(real startAngle,real endAngle,real radius,real startPointX,real startPointY,real endPointX,real endPointY,real centerPointX,real centerPointY, real actualStPtX) {
+
+	//change drill size 
+	string drillSizeCMD;
+	sprintf(drillSizeCMD, "change drill %f;",drillSize);
+	cmd += drillSizeCMD;	
+	
+	real shitValue = lineWidth/2 + CG_Dis +16; //16 is the minimum outer layer size 
+	
+	//start angle greater 180 means the flip between inner and outer
+	//swap inner and outer restLength
+	if( ((currentAngle - startAngle) !=0) || (currentAngle - endAngle) !=0) {
+		real temp = btmRestLength;
+		btmRestLength = topRestLength;
+		topRestLength = temp;
+	}
+	
+	if(actualStPtX != startPointX) {
+		if(endAngle > 180)
+			shitValue = 0-shitValue;
+	}
+	else if (startAngle > 180)   
+		shitValue = 0-shitValue;
+	
+	real topRadius = radius + shitValue;
+	real btmRadius = radius - shitValue;
+	
+	real topSegementAngle = CG_Interval/topRadius;
+	real topRestAngleSegment = (CG_Interval-topRestLength)/topRadius;   //first segement putting via consisting with restLength
+	real intervalAngle = (endAngle - startAngle)*PI/180;
+	real topIntervalAngle = intervalAngle - topRestAngleSegment;
+	real topViaNum = topIntervalAngle/topSegementAngle;
+	topRestLength = frac(topViaNum)*CG_Interval;
+	
+    real btmSegAngle = CG_Interval/btmRadius;
+	real btmRstAngSeg = (CG_Interval - btmRestLength)/ btmRadius;
+	real btmIntervalAngle = intervalAngle - btmRstAngSeg;
+	real btmViaNum = btmIntervalAngle/btmSegAngle;
+	btmRestLength = frac(btmViaNum)*CG_Interval;
+	
+	//detect start angle doesn't equal start point
+	if(actualStPtX != startPointX) {
+		currentAngle = startAngle;
+			
+		for(int i=0;i<topViaNum;i++) {			
+			real rotationDegree = endAngle*PI/180 - (topRestAngleSegment + topSegementAngle*i);
+			sprintf(viacmdTop, commonString + " 13 round 1-16 (%f %f);", topRadius*cos(rotationDegree) + centerPointX, topRadius*sin(rotationDegree) + centerPointY);
+			cmd += viacmdTop;
+		}
+	
+		for(i=0;i<btmViaNum;i++) {			
+			real rotationDegree = endAngle*PI/180 - (btmRstAngSeg + btmSegAngle*i);
+			sprintf(viacmdTop, commonString + " 13 round 1-16 (%f %f);", btmRadius*cos(rotationDegree) + centerPointX, btmRadius*sin(rotationDegree) + centerPointY);
+			cmd += viacmdTop;
+		}
+	}
+	else {
+		currentAngle = endAngle;
+			
+		for(int i=0;i<topViaNum;i++) {			
+			real rotationDegree = startAngle*PI/180 + (topRestAngleSegment + topSegementAngle*i);
+			sprintf(viacmdTop, commonString + " 13 round 1-16 (%f %f);", topRadius*cos(rotationDegree) + centerPointX, topRadius*sin(rotationDegree) + centerPointY);
+			cmd += viacmdTop;
+		}
+	
+		for(i=0;i<btmViaNum;i++) {			
+			real rotationDegree = startAngle*PI/180 + (btmRstAngSeg + btmSegAngle*i);
+			sprintf(viacmdTop, commonString + " 13 round 1-16 (%f %f);", btmRadius*cos(rotationDegree) + centerPointX, btmRadius*sin(rotationDegree) + centerPointY);
+			cmd += viacmdTop;
+		}
+	}
+	
+	//swap inner and outer restLength
+	if( currentAngle >= 180 && currentAngle <= 360 ) {
+		real temp = btmRestLength;
+		btmRestLength = topRestLength;
+		topRestLength = temp;
+	}
+	
+}
+
+
+
+//***** delete via
+void deleteVia(string viaName) {
+	string deleteCommend;
+	board(B) {
+		B.signals(S) {
+			if(strCompare(S.name, VIASignalName)==0) {
+					sprintf(deleteCommend, "display %d %d;",-1,-16);
+					cmd+=deleteCommend;
+					S.vias(V) {
+							sprintf(deleteCommend, "ripup %s (%f %f);", VIASignalName, u2mil(V.x), u2mil(V.y));
+							initX = u2mil(V.x);
+							initY = u2mil(V.y);
+							cmd += deleteCommend;
+					}
+			}
+		}
+	}
+}
+
+
+//*****  main function
+if(board) {
+	board(B) {
+
+		string selections[] = {"Add","Delete"};
+		int Selected = 0;
+		
+		//select wanna delete or add via
+		dlgDialog("Select Mode") {
+			dlgListBox(selections, Selected);
+			dlgPushButton("+OK") dlgAccept();
+			dlgPushButton("Cancel") dlgReject();		
+		};
+		
+		//select add
+		if(Selected ==0) {
+			dlgDialog("Enter Parameters") {
+		
+		
+				//set signal line
+				dlgHBoxLayout {
+					dlgLabel("Enter the signal name wanna put CopanarGuard");
+					dlgStringEdit(signalLine);
+				}
+				
+				//set drill size
+				dlgHBoxLayout {
+					dlgLabel("Enter the drill size:");
+					dlgRealEdit (drillSize,1,900);
+				}
+			
+				//set the signal name
+				dlgHBoxLayout {
+					dlgLabel("Enter the via signal name:");
+					dlgStringEdit(VIASignalName);
+				}
+			
+				//set the via distance
+				dlgHBoxLayout {
+					dlgLabel("Enter the via distance");
+					dlgRealEdit(CG_Dis,1,900);
+				}
+			
+				//set the closer distance
+				dlgHBoxLayout {
+					dlgLabel("Enter the closer distance");
+					dlgRealEdit(CG_Interval,1,900);
+				}
+	
+				dlgPushButton("+OK") dlgAccept();
+				dlgPushButton("Cancel") dlgReject();
+			};
+
+			//Execute
+			B.signals(S) {
+				if(strCompare(signalLine,S.name)==0)
+				{
+					sprintf(VIASignalName,"'%s' ",VIASignalName);
+					print(VIASignalName);
+					S.wires(W) {
+						if(W.width!=0) {
+							lineWidth = u2mil(W.width);
+							commonString = "grid mil;via ";
+							commonString += VIASignalName;
+							if(!W.curve)
+								makeCopGuardStraightLine(u2mil(W.x1),u2mil(W.x2),u2mil(W.y1),u2mil(W.y2));
+							
+                            if(W.curve) {
+									makeCopGuardArcLine(W.arc.angle1,W.arc.angle2,u2mil(W.arc.radius),u2mil(W.arc.x1),u2mil(W.arc.y1),u2mil(W.arc.x2),u2mil(W.arc.y2),u2mil(W.arc.xc),u2mil(W.arc.yc),u2mil(W.x1));
+							}
+						}
+					};
+					exit(cmd);
+				}
+			};		
+		}
+	
+		//select delete mode
+		if(Selected==1) {
+			dlgDialog("Enter Parameters") {
+				
+				//set the signal name
+				dlgHBoxLayout {
+					dlgLabel("Enter the signal name:");
+					dlgStringEdit(VIASignalName);
+				}
+				dlgPushButton("+OK") dlgAccept();
+				dlgPushButton("Cancel") dlgReject();
+			};
+			
+			
+			B.signals(S) {
+				deleteVia("test");
+				string clearMarkCMD;
+				sprintf(clearMarkCMD, "ripup %s (%f %f);\nDISPLAY last;", VIASignalName, initX, initY);
+				cmd += clearMarkCMD;
+				exit(cmd);
+			};
+		}		
+	};
+} 
+
+
+
+
+
+
